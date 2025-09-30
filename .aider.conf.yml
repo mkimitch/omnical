@@ -1,0 +1,20 @@
+# Aider AI Configuration
+# https://aider.chat/docs/config.html
+
+# Model settings
+model: gpt-4o
+editor-model: gpt-4o-mini
+
+# Code style
+auto-commits: false
+dirty-commits: true
+pretty: true
+show-diffs: true
+
+# Git settings
+git: true
+gitignore: true
+auto-lint: true
+
+# Additional flags
+map-tokens: 2048

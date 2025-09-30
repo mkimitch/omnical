@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  omnical:
+    build: .
+    image: omnical:local
+    container_name: omnical
+    environment:
+      - NODE_ENV=production
+      - API_KEY=${API_KEY}
+      - PORT=8787
+      - BIND_ADDR=127.0.0.1
+      - DATA_DIR=/app/data
+      - DB_PATH=/app/data/cal.db
+      - LOG_LEVEL=info
+    volumes:
+      - ./data:/app/data
+    ports:
+      - '127.0.0.1:8787:8787'
+    restart: unless-stopped

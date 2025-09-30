@@ -1,0 +1,10 @@
+# Example Caddyfile to terminate TLS and proxy to local service
+# Replace example.com and paths as needed.
+
+example.com {
+	encode zstd gzip
+	log
+	reverse_proxy 127.0.0.1:8787 {
+		header_up X-API-Key {env.API_KEY}
+	}
+}

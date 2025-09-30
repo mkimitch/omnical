@@ -1,0 +1,16 @@
+[Unit]
+Description=Calendar Aggregator Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/omnical
+EnvironmentFile=/etc/default/omnical
+ExecStart=/usr/bin/node /home/pi/omnical/dist/index.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,123 @@
+# Cursor AI Coding Rules
+
+## Project Context
+
+This is **OmniCal**, a TypeScript calendar aggregation API that syncs Google Calendar and ICS feeds into SQLite.
+
+## Code Style & Standards
+
+### 1. General Principles
+
+- Use **tabs** for indentation
+- Follow **DRY (Don't Repeat Yourself)** and **SOLID** principles
+- Prefer **functions over direct execution** of code
+- Prefer **functional programming** over imperative programming
+- Use **strict mode** (`"use strict";`)
+- Use **descriptive and meaningful names** for variables, functions, classes, methods, and objects
+
+### 2. TypeScript Best Practices
+
+- Use **explicit return types** for functions
+- Scope types **as close to usage as possible**
+- Prefer **interfaces over types** when possible
+- Use **readonly** where applicable
+- Use **type composition** when needed
+- Enable **strict mode** in `tsconfig.json`
+- Use **PascalCase** for type definitions
+- Place **shared types in the closest parent directory**
+
+### 3. Imports & Modules
+
+- Use **ESModules (`import/export`)** over CommonJS (`require/module.exports`)
+- Use **destructuring** where applicable
+- Alphabetize imports (where appropriate)
+
+### 4. Async Patterns
+
+- Prefer **async/await** over `.then()`
+- Use **template literals** instead of string concatenation
+
+### 5. Variables and Constants
+
+- Use **camelCase** for variables and functions
+- Use **UPPER_CASE** for constants
+- Use `let` and `const` instead of `var`
+- **Break down** complex mathematical operations into named constants
+- Avoid **mental mapping**—use clear variable names
+
+### 6. Functions
+
+- Use **ES6 arrow function syntax**
+- Minimize **function arguments**; use **options objects** for many parameters
+- Follow the **Single Responsibility Principle**
+- Use **semantic function names** that clearly describe their purpose
+- Avoid **boolean flags as function parameters**
+- Split **conditional logic into separate functions**
+
+### 7. Objects and Data Structures
+
+- Use **getters and setters** where applicable
+- Use **object destructuring** when useful
+- Use **spread/rest operators** appropriately
+- **Alphabetize** object properties (where appropriate)
+- **Alphabetize** JSON properties
+
+### 8. Comments
+
+- **Only comment business logic**; code should be self-explanatory
+- Use **JSDoc for documenting functions and classes**
+- **Remove commented-out code** instead of leaving it in the codebase
+- Keep code **self-documenting**
+
+### 9. Error Handling & Console Usage
+
+- No **linter warnings or errors**
+- No **compilation warnings or errors**
+- No **console warnings or errors**
+- No **extraneous console logs** in production
+
+### 10. Styling (when applicable)
+
+- Use `oklch()` for color management
+- Alphabetize CSS properties
+
+## Project-Specific Guidelines
+
+### Database
+
+- Use **better-sqlite3** synchronous API
+- All migrations in `drizzle/migrations/`
+- Keep raw SQL in migration files, not generated Drizzle code
+
+### API Design
+
+- Use **Zod** for request validation
+- Return proper HTTP status codes (200, 201, 400, 404, etc.)
+- Use **camelCase** for JSON responses
+- Use **snake_case** for database columns
+
+### Authentication
+
+- Use `X-API-Key` header for API key authentication
+- Store OAuth tokens encrypted in database
+
+### Testing
+
+- Place tests near source files
+- Use **Vitest** for unit tests
+- Test critical business logic (recurrence expansion, sync logic)
+
+## Performance
+
+- Use in-memory LRU caches with reasonable TTLs
+- Minimize database queries where possible
+- Use prepared statements for repeated queries
+
+## What NOT to Do
+
+- Don't use `var`
+- Don't leave commented-out code
+- Don't use array indices as React keys
+- Don't generate random keys during rendering
+- Don't nest CSS classes excessively
+- Don't hardcode sensitive values (use environment variables)
