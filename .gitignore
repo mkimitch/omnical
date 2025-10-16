@@ -84,6 +84,7 @@ $RECYCLE.BIN/
 # Temporary files
 *.tmp
 *.temp
+*.diff
 .cache/
 .temp/
 

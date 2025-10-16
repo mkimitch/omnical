@@ -1,6 +1,7 @@
 'use strict';
 import { DateTime } from 'luxon';
-import * as R from 'rrule';
+import rrulePkg from 'rrule';
+const { RRule, RRuleSet, rrulestr } = rrulePkg;
 import { getDb } from '../db/conn.js';
 import { listEnabledCalendars } from '../db/repo.js';
 import { LruCache } from '../util/lru.js';
@@ -47,10 +48,10 @@ const buildSet = (
 	rruleStr: string,
 	exdates: string[],
 	rdates: string[],
-): R.RRuleSet => {
-	const set = new R.RRuleSet();
+): InstanceType<typeof RRuleSet> => {
+	const set = new RRuleSet();
 	set.dtstart(dtstart);
-	const rule = R.rrulestr(rruleStr, { dtstart }) as R.RRule;
+	const rule = rrulestr(rruleStr, { dtstart }) as InstanceType<typeof RRule>;
 	set.rrule(rule);
 	for (const ex of exdates) set.exdate(DateTime.fromISO(ex, { zone: 'utc' }).toJSDate());
 	for (const rd of rdates) set.rdate(DateTime.fromISO(rd, { zone: 'utc' }).toJSDate());
