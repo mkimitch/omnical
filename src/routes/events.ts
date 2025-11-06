@@ -21,13 +21,26 @@ const eventsPlugin: FastifyPluginCallback = (fastify, _opts, done) => {
 		if (!parsed.success) return reply.code(400).send({ ok: false, error: parsed.error.message });
 		const { start, end, includeCancelled, clientZone } = parsed.data;
 		const events = await expandWindow(start, end, includeCancelled);
-		const mapped = clientZone
-			? events.map((e) => ({
+		const mapped = events.map((e) => {
+			const startUtc = DateTime.fromISO(e.start).toUTC();
+			const endUtc = DateTime.fromISO(e.end).toUTC();
+			const targetZone = clientZone ?? 'utc';
+			if (e.allDay) {
+				const startDate = startUtc.toISODate();
+				const endDate = endUtc.toISODate();
+				const startOut = DateTime.fromISO(startDate!, { zone: targetZone }).startOf('day');
+				const endOut = DateTime.fromISO(endDate!, { zone: targetZone }).startOf('day');
+				return { ...e, start: startOut.toISO()!, end: endOut.toISO()! };
+			}
+			if (clientZone) {
+				return {
 					...e,
-					start: DateTime.fromISO(e.start, { zone: 'utc' }).setZone(clientZone).toISO(),
-					end: DateTime.fromISO(e.end, { zone: 'utc' }).setZone(clientZone).toISO(),
-				}))
-			: events;
+					start: startUtc.setZone(clientZone).toISO()!,
+					end: endUtc.setZone(clientZone).toISO()!,
+				};
+			}
+			return { ...e, start: startUtc.toISO()!, end: endUtc.toISO()! };
+		});
 		return mapped;
 	});
 

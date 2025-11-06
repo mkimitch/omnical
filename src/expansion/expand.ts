@@ -160,7 +160,16 @@ export const expandWindow = async (
 				continue;
 			}
 			// Base instance
-			const instStart = occStart;
+			let instStart = occStart;
+			if (m.tzid && m.all_day === 0) {
+				const zone = m.tzid;
+				const baseLocal = DateTime.fromISO(m.start_iso, { zone });
+				const occLocal = occStart.setZone(zone);
+				const deltaMin = baseLocal.offset - occLocal.offset;
+				if (deltaMin !== 0) {
+					instStart = instStart.plus({ minutes: deltaMin });
+				}
+			}
 			const instEnd = instStart.plus({ milliseconds: durationMs });
 			results.push({
 				allDay: m.all_day === 1,

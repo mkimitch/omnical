@@ -12,6 +12,9 @@ export const calendars = sqliteTable('calendars', {
 	icsUrl: text('ics_url'),
 	icsEtag: text('ics_etag'),
 	icsLastMod: text('ics_last_mod'),
+	icon: text('icon'),
+	sortOrder: integer('sort_order').default(0),
+	description: text('description'),
 	updatedAt: integer('updated_at').notNull(),
 });
 
