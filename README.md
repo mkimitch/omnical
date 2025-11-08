@@ -54,8 +54,10 @@ yarn install
 Create a `.env` file in the project root:
 
 ```bash
-# Required
+# Required for basic server
 API_KEY=your-secret-key-min-8-chars
+
+# Defaults used if omitted
 PORT=8787
 BIND_ADDR=127.0.0.1
 DB_PATH=./data/cal.db
@@ -67,7 +69,11 @@ NODE_ENV=development
 # Optional: Bootstrap ICS calendars on startup (comma-separated)
 ICS_URLS=
 
-# Optional: For Google Calendar OAuth
+# Optional: Override Google OAuth scopes (default shown)
+# GOOGLE_SCOPES=https://www.googleapis.com/auth/calendar.readonly
+
+# Required for Google Calendar features (OAuth/device flow & sync)
+# Generate a 32-byte base64 key for encrypting tokens
 OAUTH_ENCRYPTION_KEY=
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
@@ -361,16 +367,18 @@ curl -H "X-API-Key: your-secret-key" \
 {
 	"calendars": {
 		"ics_2f89f7f05ca3": [
-			{ "start": "2025-09-16T18:30:00.000-05:00", "end": "2025-09-16T21:30:00.000-05:00" },
-			{ "start": "2025-09-19T18:30:00.000-05:00", "end": "2025-09-19T21:30:00.000-05:00" }
+			{ "start": "2025-09-16T23:30:00.000Z", "end": "2025-09-17T02:30:00.000Z" },
+			{ "start": "2025-09-19T23:30:00.000Z", "end": "2025-09-20T02:30:00.000Z" }
 		]
 	},
 	"merged": [
-		{ "start": "2025-09-16T18:30:00.000-05:00", "end": "2025-09-16T21:30:00.000-05:00" },
-		{ "start": "2025-09-19T18:30:00.000-05:00", "end": "2025-09-19T21:30:00.000-05:00" }
+		{ "start": "2025-09-16T23:30:00.000Z", "end": "2025-09-17T02:30:00.000Z" },
+		{ "start": "2025-09-19T23:30:00.000Z", "end": "2025-09-20T02:30:00.000Z" }
 	]
 }
 ```
+
+Note: Free/busy response times are returned in UTC.
 
 #### `GET /v1/ics`
 
