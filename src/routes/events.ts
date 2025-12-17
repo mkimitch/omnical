@@ -20,7 +20,7 @@ const eventsPlugin: FastifyPluginCallback = (fastify, _opts, done) => {
 		const parsed = qSchema.safeParse(req.query);
 		if (!parsed.success) return reply.code(400).send({ ok: false, error: parsed.error.message });
 		const { start, end, includeCancelled, clientZone } = parsed.data;
-		const events = await expandWindow(start, end, includeCancelled);
+		const events = await expandWindow(start, end, includeCancelled, { crossCalendarDedupe: true });
 		const mapped = events.map((e) => {
 			const startUtc = DateTime.fromISO(e.start).toUTC();
 			const endUtc = DateTime.fromISO(e.end).toUTC();

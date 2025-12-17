@@ -1,10 +1,10 @@
 'use strict';
 import { DateTime } from 'luxon';
 import rrulePkg from 'rrule';
-const { RRule, RRuleSet, rrulestr } = rrulePkg;
 import { getDb } from '../db/conn.js';
 import { listEnabledCalendars } from '../db/repo.js';
 import { LruCache } from '../util/lru.js';
+const { RRule, RRuleSet, rrulestr } = rrulePkg;
 
 export type EventOut = {
 	allDay: boolean;
@@ -18,6 +18,78 @@ export type EventOut = {
 	status: string | null;
 	summary: string | null;
 	uid: string;
+};
+
+type CalendarFilterConfig = {
+	enabled?: boolean;
+	allDay?: {
+		excludeKeywords?: string[];
+		allowKeywords?: string[];
+	};
+	dedupe?: {
+		enabled?: boolean;
+		acrossCalendars?: boolean;
+		group?: string;
+		caseInsensitiveSummary?: boolean;
+		requireNonEmptySummary?: boolean;
+	};
+};
+
+const parseCalendarFilterConfig = (json: string | null): CalendarFilterConfig | null => {
+	if (!json) return null;
+	try {
+		const parsed = JSON.parse(json) as unknown;
+		if (!parsed || typeof parsed !== 'object') return null;
+		return parsed as CalendarFilterConfig;
+	} catch {
+		return null;
+	}
+};
+
+const includesAny = (haystackLower: string, needles: string[]): boolean => {
+	for (const n of needles) {
+		const needle = n.trim().toLowerCase();
+		if (needle.length === 0) continue;
+		if (haystackLower.includes(needle)) return true;
+	}
+	return false;
+};
+
+const normalizeSummary = (summary: string, caseInsensitive: boolean): string => {
+	const trimmed = summary.trim();
+	return caseInsensitive ? trimmed.toLowerCase() : trimmed;
+};
+
+const eventRichnessScore = (e: EventOut): number => {
+	let score = 0;
+	if (typeof e.location === 'string' && e.location.trim().length > 0) score += 1;
+	if (typeof e.description === 'string' && e.description.trim().length > 0) score += 1;
+	if (typeof e.status === 'string' && e.status.trim().length > 0) score += 1;
+	return score;
+};
+
+const passesCalendarFilters = (e: EventOut, cfg: CalendarFilterConfig | null): boolean => {
+	if (!cfg || cfg.enabled !== true) return true;
+	if (e.allDay) {
+		const deny = cfg.allDay?.excludeKeywords ?? [];
+		if (deny.length > 0) {
+			const allow = cfg.allDay?.allowKeywords ?? [];
+			const text = `${e.summary ?? ''}\n${e.description ?? ''}\n${e.location ?? ''}`.toLowerCase();
+			if (allow.length > 0 && includesAny(text, allow)) return true;
+			if (includesAny(text, deny)) return false;
+		}
+	}
+	return true;
+};
+
+const getOverrideMasterUid = (row: RawRow): string => {
+	try {
+		const src = JSON.parse(row.source_json) as { recurringEventId?: string } | null;
+		if (src && typeof src.recurringEventId === 'string' && src.recurringEventId.length > 0) {
+			return src.recurringEventId;
+		}
+	} catch {}
+	return row.uid;
 };
 
 const intersects = (aStart: DateTime, aEnd: DateTime, bStart: DateTime, bEnd: DateTime): boolean =>
@@ -79,6 +151,7 @@ export const expandWindow = async (
 	startIso: string,
 	endIso: string,
 	includeCancelled: boolean,
+	opts?: { crossCalendarDedupe?: boolean },
 ): Promise<EventOut[]> => {
 	const start = DateTime.fromISO(startIso, { zone: 'utc' });
 	const end = DateTime.fromISO(endIso, { zone: 'utc' });
@@ -94,11 +167,16 @@ export const expandWindow = async (
 		s: start.toISO(),
 		e: end.toISO(),
 		c: includeCancelled,
-		ids: enabledIds,
+		x: opts?.crossCalendarDedupe === true,
+		cals: enabled.map((c) => ({ id: c.id, u: c.updated_at })),
 	});
 	const cached = cache.get(cacheKey);
 	if (cached) return cached;
 	const calTypeById = new Map(enabled.map((c) => [c.id, c.type as 'google' | 'ics']));
+	const calFilterById = new Map(
+		enabled.map((c) => [c.id, parseCalendarFilterConfig(c.filter_json)]),
+	);
+	const calRankById = new Map(enabled.map((c, idx) => [c.id, idx]));
 
 	const qMarks = enabledIds.map(() => '?').join(',');
 	// Masters with RRULEs that could generate occurrences before 'end'
@@ -115,17 +193,27 @@ export const expandWindow = async (
 			 AND calendar_id IN (${qMarks}) AND recurrence_id >= ? AND recurrence_id <= ?`,
 		)
 		.all(...enabledIds, start.toISO(), end.toISO()) as RawRow[];
-	// Singles intersecting window
+	// Singles intersecting window (recurrence_id NULL). Some rows may carry an empty recurrence_json; filter in TS.
 	const singles = sqlite
 		.prepare(
-			`SELECT * FROM raw_events WHERE recurrence_id IS NULL AND recurrence_json IS NULL
+			`SELECT * FROM raw_events WHERE recurrence_id IS NULL
 			 AND calendar_id IN (${qMarks}) AND start_iso < ? AND end_iso > ?`,
 		)
 		.all(...enabledIds, end.toISO(), start.toISO()) as RawRow[];
+	const movedOverrides = sqlite
+		.prepare(
+			`SELECT * FROM raw_events WHERE recurrence_id IS NOT NULL
+			 AND calendar_id IN (${qMarks}) AND start_iso < ? AND end_iso > ?
+			 AND (recurrence_id < ? OR recurrence_id > ?)`,
+		)
+		.all(...enabledIds, end.toISO(), start.toISO(), start.toISO(), end.toISO()) as RawRow[];
 
 	const overridesByKey = new Map<string, RawRow>();
 	for (const o of overrides) {
-		if (o.recurrence_id) overridesByKey.set(`${o.calendar_id}::${o.uid}::${o.recurrence_id}`, o);
+		if (o.recurrence_id) {
+			const masterUid = getOverrideMasterUid(o);
+			overridesByKey.set(`${o.calendar_id}::${masterUid}::${o.recurrence_id}`, o);
+		}
 	}
 
 	const results: EventOut[] = [];
@@ -141,7 +229,9 @@ export const expandWindow = async (
 		for (const o of occ) {
 			const occStart = DateTime.fromJSDate(o, { zone: 'utc' });
 			const recurrenceId = occStart.toISO()!;
-			const override = overridesByKey.get(`${m.calendar_id}::${m.uid}::${recurrenceId}`);
+			const override = overridesByKey.get(
+				`${m.calendar_id}::${getOverrideMasterUid(m)}::${recurrenceId}`,
+			);
 			if (override) {
 				if (!includeCancelled && (override.status ?? '').toLowerCase() === 'cancelled') continue;
 				results.push({
@@ -150,7 +240,7 @@ export const expandWindow = async (
 					description: override.description,
 					end: DateTime.fromISO(override.end_iso, { zone: 'utc' }).toISO()!,
 					location: override.location,
-					recurrence: { isRecurring: true, masterUid: m.uid, recurrenceId },
+					recurrence: { isRecurring: true, masterUid: getOverrideMasterUid(m), recurrenceId },
 					source: { type: calTypeById.get(m.calendar_id)!, id: m.uid },
 					start: DateTime.fromISO(override.start_iso, { zone: 'utc' }).toISO()!,
 					status: override.status,
@@ -188,6 +278,8 @@ export const expandWindow = async (
 	}
 	// Add singles
 	for (const s of singles) {
+		const r = parseRecurrence(s.recurrence_json);
+		if (r.rrule || r.exdates.length > 0 || r.rdates.length > 0) continue;
 		if (!includeCancelled && (s.status ?? '').toLowerCase() === 'cancelled') continue;
 		results.push({
 			allDay: s.all_day === 1,
@@ -203,9 +295,88 @@ export const expandWindow = async (
 			uid: s.uid,
 		});
 	}
-	results.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
-	cache.set(cacheKey, results);
-	return results;
+	for (const o of movedOverrides) {
+		if (!includeCancelled && (o.status ?? '').toLowerCase() === 'cancelled') continue;
+		const masterUid = getOverrideMasterUid(o);
+		results.push({
+			allDay: o.all_day === 1,
+			calendarId: o.calendar_id,
+			description: o.description,
+			end: DateTime.fromISO(o.end_iso, { zone: 'utc' }).toISO()!,
+			location: o.location,
+			recurrence: { isRecurring: true, masterUid, recurrenceId: o.recurrence_id! },
+			source: { type: calTypeById.get(o.calendar_id)!, id: o.uid },
+			start: DateTime.fromISO(o.start_iso, { zone: 'utc' }).toISO()!,
+			status: o.status,
+			summary: o.summary,
+			uid: o.uid,
+		});
+	}
+	const filtered = results.filter((e) => {
+		if (!(DateTime.fromISO(e.start) < end && DateTime.fromISO(e.end) > start)) return false;
+		return passesCalendarFilters(e, calFilterById.get(e.calendarId) ?? null);
+	});
+
+	const kept: EventOut[] = [];
+	const bestByKey = new Map<string, { e: EventOut; rank: number; score: number; uid: string }>();
+	for (const e of filtered) {
+		const cfg = calFilterById.get(e.calendarId) ?? null;
+		const d = cfg?.dedupe;
+		if (!d || d.enabled !== true) {
+			kept.push(e);
+			continue;
+		}
+		const requireNonEmpty = d.requireNonEmptySummary !== false;
+		const rawSummary = e.summary ?? '';
+		if (requireNonEmpty && rawSummary.trim().length === 0) {
+			kept.push(e);
+			continue;
+		}
+		const caseInsensitive = d.caseInsensitiveSummary !== false;
+		const normSummary = normalizeSummary(rawSummary, caseInsensitive);
+		const allowCross = opts?.crossCalendarDedupe === true && d.acrossCalendars === true;
+		const group =
+			allowCross && typeof d.group === 'string' && d.group.trim().length > 0
+				? d.group.trim()
+				: '__all__';
+		const bucket = allowCross ? `g:${group}` : `c:${e.calendarId}`;
+		const key = `${bucket}::${normSummary}::${e.allDay ? 1 : 0}::${e.start}::${e.end}`;
+		const rank = calRankById.get(e.calendarId) ?? 999_999;
+		const score = eventRichnessScore(e);
+		const uid = e.uid;
+		const existing = bestByKey.get(key);
+		if (!existing) {
+			bestByKey.set(key, { e, rank, score, uid });
+			continue;
+		}
+		if (rank < existing.rank) {
+			bestByKey.set(key, { e, rank, score, uid });
+			continue;
+		}
+		if (rank > existing.rank) continue;
+		if (score > existing.score) {
+			bestByKey.set(key, { e, rank, score, uid });
+			continue;
+		}
+		if (score < existing.score) continue;
+		if (uid.localeCompare(existing.uid) < 0) {
+			bestByKey.set(key, { e, rank, score, uid });
+		}
+	}
+
+	const deduped = [...kept, ...Array.from(bestByKey.values(), (v) => v.e)];
+	deduped.sort((a, b) => {
+		if (a.start !== b.start) return a.start < b.start ? -1 : 1;
+		if (a.end !== b.end) return a.end < b.end ? -1 : 1;
+		const ra = calRankById.get(a.calendarId) ?? 999_999;
+		const rb = calRankById.get(b.calendarId) ?? 999_999;
+		if (ra !== rb) return ra - rb;
+		const sa = (a.summary ?? '').localeCompare(b.summary ?? '');
+		if (sa !== 0) return sa;
+		return a.uid.localeCompare(b.uid);
+	});
+	cache.set(cacheKey, deduped);
+	return deduped;
 };
 
 // module-level cache instance

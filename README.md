@@ -23,6 +23,7 @@ A TypeScript calendar service that syncs Google Calendar and ICS feeds into a lo
 - **Recurrence expansion**: On-demand expansion of RRULEs with overrides and exceptions
 - **Time zone support**: All times stored in UTC; optional client timezone conversion for queries
 - **Multiple export formats**: JSON events, free/busy blocks, merged ICS
+- **Per-calendar opt-in filtering & dedupe**: Applied at query/expansion time (does not modify ingested data)
 - **Performance**: In-memory LRU cache (30s TTL) for expansion results
 - **Health & metrics**: Prometheus-style metrics endpoint
 
@@ -132,7 +133,7 @@ curl http://127.0.0.1:8787/metrics
 
 **Response** (Prometheus text format):
 
-```
+```text
 # HELP up 1 if the service is up
 # TYPE up gauge
 up 1
@@ -162,6 +163,7 @@ curl -H "X-API-Key: your-secret-key" http://127.0.0.1:8787/v1/calendars
 		"color": "oklch(0.62 0.19 259.81)",
 		"description": "Work calendar",
 		"enabled": true,
+		"filterJson": null,
 		"googleCalId": null,
 		"icon": "📅",
 		"icsUrl": "http://example.com/feed.ics",
@@ -233,12 +235,12 @@ curl -X POST -H "X-API-Key: your-secret-key" \
 
 #### `PUT /v1/calendars/:id`
 
-Update calendar metadata (label, color, icon, description, sort order, enabled status).
+Update calendar metadata (label, color, icon, description, sort order, enabled status) and optional per-calendar event filtering and deduplication.
 
 ```bash
 curl -X PUT -H "X-API-Key: your-secret-key" \
   -H "Content-Type: application/json" \
-  -d '{"label": "Updated Label", "color": "oklch(0.64 0.21 25.33)", "icon": "🎉", "sortOrder": 10, "enabled": true}' \
+  -d '{"label": "Updated Label", "color": "oklch(0.64 0.21 25.33)", "icon": "🎉", "sortOrder": 10, "enabled": true, "filterJson": {"enabled": true, "allDay": {"excludeKeywords": ["PTO", "OOO", "Out of Office"], "allowKeywords": ["Smruti"]}, "dedupe": {"enabled": true, "acrossCalendars": true, "group": "work-mirrors"}}}' \
   http://127.0.0.1:8787/v1/calendars/ics_2f89f7f05ca3
 ```
 
@@ -249,13 +251,12 @@ curl -X PUT -H "X-API-Key: your-secret-key" \
 	"color": "oklch(0.64 0.21 25.33)",
 	"description": "My personal calendar",
 	"enabled": false,
+	"filterJson": null,
 	"icon": "🎉",
 	"label": "Updated Label",
 	"sortOrder": 10
 }
 ```
-
-**Response**: Updated calendar object, or `404` if not found.
 
 **Customization fields**:
 
@@ -265,6 +266,57 @@ curl -X PUT -H "X-API-Key: your-secret-key" \
 - **`description`**: Longer description text or null
 - **`sortOrder`**: Integer for display ordering (lower = earlier); calendars are sorted by this field, then by ID
 - **`enabled`**: Boolean to enable/disable sync and event queries
+- **`filterJson`**: Optional per-calendar query-time rules configuration (filters and dedupe).
+  - If omitted: no change
+  - If `null`: clears rules
+  - If a string: stored as-is (must contain valid JSON)
+  - If an object: stored as JSON and applied at query/expansion time
+  - Calendar responses return `filterJson` as the stored JSON string (or `null`).
+  - Rules are opt-in and do not modify ingested data; they only affect outputs from `GET /v1/events`, `GET /v1/freebusy`, and `GET /v1/ics`.
+  - Note: calendar `enabled` controls whether the calendar itself is active; `filterJson.enabled` controls whether filtering is active; `filterJson.dedupe.enabled` controls whether deduplication is active.
+  - Cross-calendar dedupe requires `filterJson.dedupe.acrossCalendars: true` and is only applied by `GET /v1/events` and `GET /v1/ics`. Set `filterJson.dedupe.group` to limit dedupe to calendars sharing the same group.
+
+**Filter config format** (example):
+
+```json
+{
+	"enabled": true,
+	"allDay": {
+		"excludeKeywords": ["PTO", "OOO", "Out of Office"],
+		"allowKeywords": ["Smruti"]
+	}
+}
+```
+
+**Filter semantics**:
+
+- **All-day events only**: the example above only applies to `allDay: true` events.
+- **Exclude**: if an all-day event contains any `excludeKeywords`, it is filtered out.
+- **Allow/exception**: if it contains any `allowKeywords`, it is kept even if it matches an exclude keyword.
+
+**Dedupe config format** (example):
+
+```json
+{
+	"dedupe": {
+		"enabled": true,
+		"acrossCalendars": true,
+		"group": "work-mirrors",
+		"caseInsensitiveSummary": true,
+		"requireNonEmptySummary": true
+	}
+}
+```
+
+**Dedupe semantics**:
+
+- **Key**: Events are considered duplicates when `summary`, `allDay`, `start`, and `end` match (after normalization).
+- **Summary normalization**: By default, `summary` is trimmed and lowercased (`caseInsensitiveSummary: true`).
+- **Empty summaries**: By default, events with empty `summary` are not deduped (`requireNonEmptySummary: true`).
+- **Winner selection**: When duplicates exist, the calendar with the lower `sortOrder` wins; ties prefer the richer event payload.
+- **Scope**: By default, dedupe is within a single calendar. If `acrossCalendars: true`, dedupe can span calendars.
+  - If `group` is set: only calendars with the same group are deduped together.
+  - If `group` is omitted: all calendars with `acrossCalendars: true` are considered part of one group.
 
 #### `DELETE /v1/calendars/:id`
 
@@ -307,6 +359,8 @@ curl -X POST -H "X-API-Key: your-secret-key" http://127.0.0.1:8787/v1/sync
 #### `GET /v1/events`
 
 Query events within a time window (UTC). Recurrences are expanded on-demand.
+
+Note: Per-calendar `filterJson` rules (filters and dedupe) are applied at query/expansion time (they do not modify ingested data). Cross-calendar dedupe is enabled on this endpoint when calendars opt in via `filterJson.dedupe.acrossCalendars`.
 
 **Query Parameters**:
 
@@ -351,6 +405,8 @@ curl -H "X-API-Key: your-secret-key" \
 
 Get busy blocks per calendar and a merged view.
 
+Note: Free/busy blocks are derived from expanded events, so per-calendar `filterJson` rules (filters and per-calendar dedupe) apply here too. Cross-calendar dedupe is not applied on this endpoint.
+
 **Query Parameters**:
 
 - `start` (required): ISO 8601 UTC timestamp
@@ -383,6 +439,8 @@ Note: Free/busy response times are returned in UTC.
 #### `GET /v1/ics`
 
 Export events as a merged ICS file (text/calendar).
+
+Note: Per-calendar `filterJson` rules (filters and dedupe) are applied before exporting. Cross-calendar dedupe is enabled on this endpoint when calendars opt in via `filterJson.dedupe.acrossCalendars`.
 
 **Query Parameters**:
 
@@ -507,7 +565,7 @@ curl -H "X-API-Key: your-secret-key" \
 
 ### Project Structure
 
-```
+```text
 omnical/
 ├── src/
 │   ├── index.ts              # Server entry point
@@ -549,7 +607,9 @@ omnical/
 │       └── addIcsCal.ts          # Register ICS feed
 ├── drizzle/
 │   └── migrations/
-│       └── 000_init.sql      # Initial schema
+│       ├── 000_init.sql                  # Initial schema
+│       ├── 001_add_calendar_metadata.sql  # Calendar metadata columns
+│       └── 002_add_calendar_filters.sql   # Per-calendar filter settings
 ├── data/
 │   └── cal.db                # SQLite database (created on first run)
 ├── package.json
@@ -560,13 +620,13 @@ omnical/
 
 ### Database Schema
 
-- **`calendars`**: Calendar sources (Google or ICS)
+- **`calendars`**: Calendar sources (Google or ICS) and per-calendar settings
 - **`raw_events`**: Normalized event storage (masters, overrides, singles)
 - **`oauth_tokens`**: Encrypted OAuth refresh/access tokens
 
 ### Notes
 
-- **Migration fallback**: If Drizzle's migrator fails (missing `meta/_journal.json`), the raw SQL migration is applied automatically. This is expected behavior.
+- **Migrations**: On startup, SQL migrations in `drizzle/migrations` are applied idempotently and tracked in `_migrations`.
 - **Recurrence expansion**: Events with RRULEs are expanded on-demand during queries. A 30-second in-memory LRU cache speeds up repeated queries.
 - **Time zones**: All times are stored and queried in UTC. Use the `clientZone` parameter to convert results to a local timezone.
 

@@ -7,6 +7,7 @@ export type CalendarRow = {
 	color: string | null;
 	description: string | null;
 	enabled: number;
+	filter_json: string | null;
 	google_cal_id: string | null;
 	icon: string | null;
 	ics_etag: string | null;
@@ -46,10 +47,10 @@ export const upsertCalendarIcs = (url: string, label?: string): CalendarRow => {
 	sqlite
 		.prepare(
 			`INSERT INTO calendars (id, type, label, color, enabled, google_cal_id, sync_token, ics_url, ics_etag, ics_last_mod, updated_at)
-			 VALUES (@id, 'ics', @label, NULL, 1, NULL, NULL, @ics_url, NULL, NULL, @updated_at)
-			 ON CONFLICT(id) DO UPDATE SET label = COALESCE(excluded.label, calendars.label), ics_url = excluded.ics_url, updated_at = excluded.updated_at`,
+			 VALUES (@id, 'ics', COALESCE(@label, @ics_url), NULL, 1, NULL, NULL, @ics_url, NULL, NULL, @updated_at)
+			 ON CONFLICT(id) DO UPDATE SET label = COALESCE(@label, calendars.label), ics_url = excluded.ics_url, updated_at = excluded.updated_at`,
 		)
-		.run({ id, label: label ?? url, ics_url: url, updated_at: Date.now() });
+		.run({ id, label: label ?? null, ics_url: url, updated_at: Date.now() });
 	return sqlite.prepare('SELECT * FROM calendars WHERE id = ?').get(id) as CalendarRow;
 };
 
@@ -68,10 +69,10 @@ export const upsertCalendarGoogle = (googleCalId: string, label?: string): Calen
 	sqlite
 		.prepare(
 			`INSERT INTO calendars (id, type, label, color, enabled, google_cal_id, sync_token, ics_url, ics_etag, ics_last_mod, updated_at)
-			 VALUES (@id, 'google', @label, NULL, 1, @google_cal_id, NULL, NULL, NULL, NULL, @updated_at)
-			 ON CONFLICT(id) DO UPDATE SET label = COALESCE(excluded.label, calendars.label), google_cal_id = excluded.google_cal_id, updated_at = excluded.updated_at`,
+			 VALUES (@id, 'google', COALESCE(@label, @google_cal_id), NULL, 1, @google_cal_id, NULL, NULL, NULL, NULL, @updated_at)
+			 ON CONFLICT(id) DO UPDATE SET label = COALESCE(@label, calendars.label), google_cal_id = excluded.google_cal_id, updated_at = excluded.updated_at`,
 		)
-		.run({ id, label: label ?? googleCalId, google_cal_id: googleCalId, updated_at: Date.now() });
+		.run({ id, label: label ?? null, google_cal_id: googleCalId, updated_at: Date.now() });
 	return sqlite.prepare('SELECT * FROM calendars WHERE id = ?').get(id) as CalendarRow;
 };
 
@@ -175,6 +176,7 @@ export type CalendarUpdateFields = {
 	color?: string | null;
 	description?: string | null;
 	enabled?: boolean;
+	filter_json?: string | null;
 	icon?: string | null;
 	label?: string | null;
 	sort_order?: number | null;
@@ -192,6 +194,10 @@ export const updateCalendar = (id: string, fields: CalendarUpdateFields): Calend
 	if (fields.color !== undefined) {
 		updates.push('color = @color');
 		params.color = fields.color;
+	}
+	if (fields.filter_json !== undefined) {
+		updates.push('filter_json = @filter_json');
+		params.filter_json = fields.filter_json;
 	}
 	if (fields.icon !== undefined) {
 		updates.push('icon = @icon');

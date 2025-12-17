@@ -21,7 +21,7 @@ const icsPlugin: FastifyPluginCallback = (fastify, _opts, done) => {
 		if (!parsed.success) return reply.code(400).send({ ok: false, error: parsed.error.message });
 		const { start, end } = parsed.data;
 		const win = start && end ? { start, end } : defaultWindow();
-		const events = await expandWindow(win.start, win.end, false);
+		const events = await expandWindow(win.start, win.end, false, { crossCalendarDedupe: true });
 		let text = '';
 		text += 'BEGIN:VCALENDAR\r\n';
 		text += 'PRODID:-//omnical//EN\r\n';

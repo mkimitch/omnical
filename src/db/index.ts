@@ -7,6 +7,64 @@ import path from 'node:path';
 import { loadEnv } from '../config/env.js';
 import { logger } from '../logging/logger.js';
 
+const splitSqlStatements = (sql: string): string[] => {
+	const out: string[] = [];
+	let cur = '';
+	let inSingle = false;
+	let inDouble = false;
+	for (let i = 0; i < sql.length; i++) {
+		const ch = sql[i]!;
+		const prev = i > 0 ? sql[i - 1] : '';
+		if (!inDouble && ch === "'" && prev !== '\\') inSingle = !inSingle;
+		if (!inSingle && ch === '"' && prev !== '\\') inDouble = !inDouble;
+		if (!inSingle && !inDouble && ch === ';') {
+			const stmt = cur.trim();
+			if (stmt.length > 0) out.push(stmt);
+			cur = '';
+			continue;
+		}
+		cur += ch;
+	}
+	const last = cur.trim();
+	if (last.length > 0) out.push(last);
+	return out;
+};
+
+const applySqlMigrationFile = (sqlite: Database.Database, migPath: string) => {
+	const sql = fs.readFileSync(migPath, 'utf8');
+	const statements = splitSqlStatements(sql);
+	for (const stmt of statements) {
+		try {
+			sqlite.exec(stmt);
+		} catch (e: any) {
+			const msg = typeof e?.message === 'string' ? e.message : '';
+			const isDupCol = msg.toLowerCase().includes('duplicate column name');
+			const isAddCol = stmt.toLowerCase().includes('add column');
+			if (isDupCol && isAddCol) continue;
+			throw e;
+		}
+	}
+};
+
+const applyManualSqlMigrations = (sqlite: Database.Database, migrationsFolder: string) => {
+	ensureMigrationsTable(sqlite);
+	const applied = getAppliedMigrations(sqlite);
+	const migFiles = fs
+		.readdirSync(migrationsFolder)
+		.filter((f) => /^\d{3}_.+\.sql$/.test(f))
+		.sort((a, b) => a.localeCompare(b));
+
+	for (const migFile of migFiles) {
+		if (applied.has(migFile)) continue;
+		const migPath = path.join(migrationsFolder, migFile);
+		if (!fs.existsSync(migPath)) continue;
+		applySqlMigrationFile(sqlite, migPath);
+		markMigrationApplied(sqlite, migFile);
+		logger.info({ migPath }, 'Manual SQL migration applied');
+	}
+	sqlite.pragma('foreign_keys = ON');
+};
+
 const ensureMigrationsTable = (sqlite: Database.Database) => {
 	sqlite.exec(`
 		CREATE TABLE IF NOT EXISTS _migrations (
@@ -43,30 +101,14 @@ export const initDb = () => {
 		migrate(db, { migrationsFolder });
 		logger.info({ migrationsFolder }, 'Database migrated');
 	} catch (err) {
-		logger.warn({ err }, 'Drizzle migrator failed; attempting manual SQL migration fallback');
-		try {
-			// Apply only unapplied SQL migrations in order
-			const migrations = ['000_init.sql'];
-			const applied = getAppliedMigrations(sqlite);
+		logger.warn({ err }, 'Drizzle migrator failed; continuing with manual SQL migrations');
+	}
 
-			for (const migFile of migrations) {
-				if (applied.has(migFile)) {
-					logger.debug({ migFile }, 'Migration already applied, skipping');
-					continue;
-				}
-
-				const migPath = path.join(migrationsFolder, migFile);
-				if (fs.existsSync(migPath)) {
-					const sql = fs.readFileSync(migPath, 'utf8');
-					sqlite.exec(sql);
-					markMigrationApplied(sqlite, migFile);
-					logger.info({ migPath }, 'Manual SQL migration applied');
-				}
-			}
-		} catch (e) {
-			logger.error({ e }, 'Manual SQL migration fallback failed');
-			throw e;
-		}
+	try {
+		applyManualSqlMigrations(sqlite, migrationsFolder);
+	} catch (e) {
+		logger.error({ e }, 'Manual SQL migrations failed');
+		throw e;
 	}
 	return { sqlite, db };
 };

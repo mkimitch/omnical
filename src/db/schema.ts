@@ -15,6 +15,7 @@ export const calendars = sqliteTable('calendars', {
 	icon: text('icon'),
 	sortOrder: integer('sort_order').default(0),
 	description: text('description'),
+	filterJson: text('filter_json'),
 	updatedAt: integer('updated_at').notNull(),
 });
 

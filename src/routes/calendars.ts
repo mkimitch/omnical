@@ -15,6 +15,7 @@ const serializeCalendar = (r: any) => ({
 	color: r.color,
 	description: r.description,
 	enabled: r.enabled === 1,
+	filterJson: r.filter_json,
 	googleCalId: r.google_cal_id,
 	icon: r.icon,
 	icsUrl: r.ics_url,
@@ -40,6 +41,10 @@ const UpdateCalendarSchema = z.object({
 	color: z.string().nullable().optional(),
 	description: z.string().nullable().optional(),
 	enabled: z.boolean().optional(),
+	filterJson: z
+		.union([z.record(z.unknown()), z.string()])
+		.nullable()
+		.optional(),
 	icon: z.string().nullable().optional(),
 	label: z.string().nullable().optional(),
 	sortOrder: z.number().int().nullable().optional(),
@@ -103,6 +108,14 @@ const calendarsPlugin: FastifyPluginCallback = (fastify, _opts, done) => {
 			const fields: any = {};
 			if (parsed.data.label !== undefined) fields.label = parsed.data.label;
 			if (parsed.data.color !== undefined) fields.color = parsed.data.color;
+			if (parsed.data.filterJson !== undefined) {
+				fields.filter_json =
+					parsed.data.filterJson === null
+						? null
+						: typeof parsed.data.filterJson === 'string'
+							? parsed.data.filterJson
+							: JSON.stringify(parsed.data.filterJson);
+			}
 			if (parsed.data.icon !== undefined) fields.icon = parsed.data.icon;
 			if (parsed.data.description !== undefined) fields.description = parsed.data.description;
 			if (parsed.data.sortOrder !== undefined) fields.sort_order = parsed.data.sortOrder;
