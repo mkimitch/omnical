@@ -36,8 +36,7 @@
     "drizzle:migrate": "drizzle-kit migrate",
     "auth:google": "tsx src/cli/authGoogleDevice.ts",
     "add:gcal": "tsx src/cli/addGoogleCal.ts",
-    "add:ics": "tsx src/cli/addIcsCal.ts",
-    "preinstall": "node preinstall.js"
+    "add:ics": "tsx src/cli/addIcsCal.ts"
   },
   "dependencies": {
     "better-sqlite3": "^9.4.1",
