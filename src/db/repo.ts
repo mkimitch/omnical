@@ -88,6 +88,7 @@ export type RawEventRow = {
 	start_iso: string; // UTC ISO
 	status: string | null;
 	summary: string | null;
+	transparency: string | null; // 'opaque' | 'transparent'
 	tzid: string | null;
 	uid: string;
 	updated_ts: number;
@@ -130,9 +131,9 @@ export const upsertRawEvent = (row: RawEventRow): void => {
 		.prepare(
 			`INSERT INTO raw_events (
 				calendar_id, uid, recurrence_id, updated_ts, status, all_day, start_iso, end_iso, tzid,
-				summary, location, description, recurrence_json, source_json
+				summary, location, description, recurrence_json, source_json, transparency
 			) VALUES (@calendar_id, @uid, @recurrence_id, @updated_ts, @status, @all_day, @start_iso, @end_iso, @tzid,
-				@summary, @location, @description, @recurrence_json, @source_json)`,
+				@summary, @location, @description, @recurrence_json, @source_json, @transparency)`,
 		)
 		.run(row);
 };

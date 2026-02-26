@@ -10,6 +10,12 @@ const headerOrNull = (res: Response, name: string): string | null => {
 	return v && v.length > 0 ? v : null;
 };
 
+const normalizeIcsTransparency = (value: string | undefined | null): 'opaque' | 'transparent' => {
+	if (!value) return 'opaque';
+	const upper = value.toUpperCase().trim();
+	return upper === 'TRANSPARENT' ? 'transparent' : 'opaque';
+};
+
 const mapIcalEventToRows = (cal: CalendarRow, ev: any): RawEventRow[] => {
 	// node-ical ICalEvent shape
 	const uid: string = ev.uid || `${cal.id}-${ev.id}`;
@@ -37,6 +43,7 @@ const mapIcalEventToRows = (cal: CalendarRow, ev: any): RawEventRow[] => {
 	const recurrenceJson = hasRecurrence
 		? JSON.stringify({ rrule: rruleStr, exdates, rdates })
 		: null;
+	const transparency = normalizeIcsTransparency(ev.transp);
 	const row: RawEventRow = {
 		calendar_id: cal.id,
 		uid,
@@ -63,7 +70,9 @@ const mapIcalEventToRows = (cal: CalendarRow, ev: any): RawEventRow[] => {
 			rrule: rruleStr,
 			exdate: exdates,
 			rdate: rdates,
+			transp: ev.transp ?? null,
 		}),
+		transparency,
 	};
 	return [row];
 };

@@ -6,6 +6,15 @@ import { listEnabledCalendars } from '../db/repo.js';
 import { LruCache } from '../util/lru.js';
 const { RRule, RRuleSet, rrulestr } = rrulePkg;
 
+export type TimeTransparency = {
+	blocksTime: boolean;
+	value: 'opaque' | 'transparent';
+	source: {
+		provider: 'google' | 'ics';
+		rawValue: string | null;
+	};
+};
+
 export type EventOut = {
 	allDay: boolean;
 	calendarId: string;
@@ -17,6 +26,7 @@ export type EventOut = {
 	start: string; // ISO
 	status: string | null;
 	summary: string | null;
+	timeTransparency: TimeTransparency;
 	uid: string;
 };
 
@@ -88,7 +98,7 @@ const getOverrideMasterUid = (row: RawRow): string => {
 		if (src && typeof src.recurringEventId === 'string' && src.recurringEventId.length > 0) {
 			return src.recurringEventId;
 		}
-	} catch {}
+	} catch { }
 	return row.uid;
 };
 
@@ -142,9 +152,45 @@ type RawRow = {
 	start_iso: string;
 	status: string | null;
 	summary: string | null;
+	transparency: string | null;
 	tzid: string | null;
 	uid: string;
 	updated_ts: number;
+};
+
+const extractRawTransparencyValue = (
+	sourceJson: string,
+	calType: 'google' | 'ics',
+): string | null => {
+	try {
+		const parsed = JSON.parse(sourceJson) as Record<string, unknown>;
+		if (calType === 'google') {
+			const val = parsed.transparency;
+			return typeof val === 'string' ? val : null;
+		} else {
+			const val = parsed.transp;
+			return typeof val === 'string' ? val : null;
+		}
+	} catch {
+		return null;
+	}
+};
+
+const buildTimeTransparency = (
+	row: RawRow,
+	calType: 'google' | 'ics',
+): TimeTransparency => {
+	const normalizedValue: 'opaque' | 'transparent' =
+		row.transparency === 'transparent' ? 'transparent' : 'opaque';
+	const rawValue = extractRawTransparencyValue(row.source_json, calType);
+	return {
+		blocksTime: normalizedValue === 'opaque',
+		value: normalizedValue,
+		source: {
+			provider: calType,
+			rawValue,
+		},
+	};
 };
 
 export const expandWindow = async (
@@ -245,6 +291,7 @@ export const expandWindow = async (
 					start: DateTime.fromISO(override.start_iso, { zone: 'utc' }).toISO()!,
 					status: override.status,
 					summary: override.summary,
+					timeTransparency: buildTimeTransparency(override, calTypeById.get(m.calendar_id)!),
 					uid: m.uid,
 				});
 				continue;
@@ -272,6 +319,7 @@ export const expandWindow = async (
 				start: instStart.toISO()!,
 				status: m.status,
 				summary: m.summary,
+				timeTransparency: buildTimeTransparency(m, calTypeById.get(m.calendar_id)!),
 				uid: m.uid,
 			});
 		}
@@ -292,6 +340,7 @@ export const expandWindow = async (
 			start: DateTime.fromISO(s.start_iso, { zone: 'utc' }).toISO()!,
 			status: s.status,
 			summary: s.summary,
+			timeTransparency: buildTimeTransparency(s, calTypeById.get(s.calendar_id)!),
 			uid: s.uid,
 		});
 	}
@@ -309,6 +358,7 @@ export const expandWindow = async (
 			start: DateTime.fromISO(o.start_iso, { zone: 'utc' }).toISO()!,
 			status: o.status,
 			summary: o.summary,
+			timeTransparency: buildTimeTransparency(o, calTypeById.get(o.calendar_id)!),
 			uid: o.uid,
 		});
 	}
