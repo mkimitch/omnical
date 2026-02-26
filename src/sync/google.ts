@@ -72,6 +72,12 @@ const parseRecurrence = (
 	return { rrule, exdates, rdates: [] };
 };
 
+const normalizeGoogleTransparency = (value: string | undefined): 'opaque' | 'transparent' => {
+	if (!value) return 'opaque';
+	const lower = value.toLowerCase();
+	return lower === 'transparent' ? 'transparent' : 'opaque';
+};
+
 const mapGoogleEvent = (
 	calId: string,
 	ge: GoogleEvent,
@@ -79,6 +85,7 @@ const mapGoogleEvent = (
 	const uid = ge.id;
 	const status = ge.status ?? null;
 	const updatedTs = ge.updated ? DateTime.fromISO(ge.updated).toMillis() : Date.now();
+	const transparency = normalizeGoogleTransparency(ge.transparency);
 	const isOverride = !!ge.recurringEventId && !!ge.originalStartTime;
 	const orig = isOverride ? toUtcIso(ge.originalStartTime) : null;
 	const start = toUtcIso(ge.start, orig?.iso ?? undefined);
@@ -102,6 +109,7 @@ const mapGoogleEvent = (
 				start_iso: start.iso!,
 				status: 'cancelled',
 				summary: ge.summary ?? null,
+				transparency,
 				tzid,
 				uid,
 				updated_ts: updatedTs,
@@ -122,6 +130,7 @@ const mapGoogleEvent = (
 			start_iso: start.iso!,
 			status,
 			summary: ge.summary ?? null,
+			transparency,
 			tzid,
 			uid,
 			updated_ts: updatedTs,

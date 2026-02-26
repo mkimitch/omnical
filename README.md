@@ -159,21 +159,21 @@ curl -H "X-API-Key: your-secret-key" http://127.0.0.1:8787/v1/calendars
 
 ```json
 [
-	{
-		"color": "oklch(0.62 0.19 259.81)",
-		"description": "Work calendar",
-		"enabled": true,
-		"filterJson": null,
-		"googleCalId": null,
-		"icon": "📅",
-		"icsUrl": "http://example.com/feed.ics",
-		"id": "ics_2f89f7f05ca3",
-		"label": "My ICS Feed",
-		"sortOrder": 0,
-		"syncToken": null,
-		"type": "ics",
-		"updatedAt": 1758942606668
-	}
+ {
+  "color": "oklch(0.62 0.19 259.81)",
+  "description": "Work calendar",
+  "enabled": true,
+  "filterJson": null,
+  "googleCalId": null,
+  "icon": "📅",
+  "icsUrl": "http://example.com/feed.ics",
+  "id": "ics_2f89f7f05ca3",
+  "label": "My ICS Feed",
+  "sortOrder": 0,
+  "syncToken": null,
+  "type": "ics",
+  "updatedAt": 1758942606668
+ }
 ]
 ```
 
@@ -202,8 +202,8 @@ curl -X POST -H "X-API-Key: your-secret-key" \
 
 ```json
 {
-	"url": "https://example.com/calendar.ics",
-	"label": "Work Calendar" // optional
+ "url": "https://example.com/calendar.ics",
+ "label": "Work Calendar" // optional
 }
 ```
 
@@ -224,8 +224,8 @@ curl -X POST -H "X-API-Key: your-secret-key" \
 
 ```json
 {
-	"calendarId": "your_calendar_id@group.calendar.google.com",
-	"label": "My Google Calendar" // optional
+ "calendarId": "your_calendar_id@group.calendar.google.com",
+ "label": "My Google Calendar" // optional
 }
 ```
 
@@ -248,13 +248,13 @@ curl -X PUT -H "X-API-Key: your-secret-key" \
 
 ```json
 {
-	"color": "oklch(0.64 0.21 25.33)",
-	"description": "My personal calendar",
-	"enabled": false,
-	"filterJson": null,
-	"icon": "🎉",
-	"label": "Updated Label",
-	"sortOrder": 10
+ "color": "oklch(0.64 0.21 25.33)",
+ "description": "My personal calendar",
+ "enabled": false,
+ "filterJson": null,
+ "icon": "🎉",
+ "label": "Updated Label",
+ "sortOrder": 10
 }
 ```
 
@@ -280,11 +280,11 @@ curl -X PUT -H "X-API-Key: your-secret-key" \
 
 ```json
 {
-	"enabled": true,
-	"allDay": {
-		"excludeKeywords": ["PTO", "OOO", "Out of Office"],
-		"allowKeywords": ["Smruti"]
-	}
+ "enabled": true,
+ "allDay": {
+  "excludeKeywords": ["PTO", "OOO", "Out of Office"],
+  "allowKeywords": ["Smruti"]
+ }
 }
 ```
 
@@ -298,13 +298,13 @@ curl -X PUT -H "X-API-Key: your-secret-key" \
 
 ```json
 {
-	"dedupe": {
-		"enabled": true,
-		"acrossCalendars": true,
-		"group": "work-mirrors",
-		"caseInsensitiveSummary": true,
-		"requireNonEmptySummary": true
-	}
+ "dedupe": {
+  "enabled": true,
+  "acrossCalendars": true,
+  "group": "work-mirrors",
+  "caseInsensitiveSummary": true,
+  "requireNonEmptySummary": true
+ }
 }
 ```
 
@@ -349,8 +349,8 @@ curl -X POST -H "X-API-Key: your-secret-key" http://127.0.0.1:8787/v1/sync
 
 ```json
 {
-	"google": { "updated": 0, "calendars": [] },
-	"ics": { "updated": 34, "calendars": ["ics_2f89f7f05ca3"] }
+ "google": { "updated": 0, "calendars": [] },
+ "ics": { "updated": 34, "calendars": ["ics_2f89f7f05ca3"] }
 }
 ```
 
@@ -359,6 +359,8 @@ curl -X POST -H "X-API-Key: your-secret-key" http://127.0.0.1:8787/v1/sync
 #### `GET /v1/events`
 
 Query events within a time window (UTC). Recurrences are expanded on-demand.
+
+Each event includes a `timeTransparency` object (e.g. Google `transparency` / ICS `TRANSP`) indicating whether it should block time.
 
 Note: Per-calendar `filterJson` rules (filters and dedupe) are applied at query/expansion time (they do not modify ingested data). Cross-calendar dedupe is enabled on this endpoint when calendars opt in via `filterJson.dedupe.acrossCalendars`.
 
@@ -385,19 +387,24 @@ curl -H "X-API-Key: your-secret-key" \
 
 ```json
 [
-	{
-		"allDay": false,
-		"calendarId": "ics_2f89f7f05ca3",
-		"description": "Weekly sync",
-		"end": "2025-09-17T02:30:00.000Z",
-		"location": "Conference Room A",
-		"recurrence": { "isRecurring": false },
-		"source": { "type": "ics", "id": "event123@example.com" },
-		"start": "2025-09-16T23:30:00.000Z",
-		"status": "CONFIRMED",
-		"summary": "Team Meeting",
-		"uid": "event123@example.com"
-	}
+ {
+  "allDay": false,
+  "calendarId": "ics_2f89f7f05ca3",
+  "description": "Weekly sync",
+  "end": "2025-09-17T02:30:00.000Z",
+  "location": "Conference Room A",
+  "recurrence": { "isRecurring": false },
+  "source": { "type": "ics", "id": "event123@example.com" },
+  "start": "2025-09-16T23:30:00.000Z",
+  "status": "CONFIRMED",
+  "summary": "Team Meeting",
+  "timeTransparency": {
+   "blocksTime": true,
+   "value": "opaque",
+   "source": { "provider": "ics", "rawValue": "OPAQUE" }
+  },
+  "uid": "event123@example.com"
+ }
 ]
 ```
 
@@ -421,16 +428,16 @@ curl -H "X-API-Key: your-secret-key" \
 
 ```json
 {
-	"calendars": {
-		"ics_2f89f7f05ca3": [
-			{ "start": "2025-09-16T23:30:00.000Z", "end": "2025-09-17T02:30:00.000Z" },
-			{ "start": "2025-09-19T23:30:00.000Z", "end": "2025-09-20T02:30:00.000Z" }
-		]
-	},
-	"merged": [
-		{ "start": "2025-09-16T23:30:00.000Z", "end": "2025-09-17T02:30:00.000Z" },
-		{ "start": "2025-09-19T23:30:00.000Z", "end": "2025-09-20T02:30:00.000Z" }
-	]
+ "calendars": {
+  "ics_2f89f7f05ca3": [
+   { "start": "2025-09-16T23:30:00.000Z", "end": "2025-09-17T02:30:00.000Z" },
+   { "start": "2025-09-19T23:30:00.000Z", "end": "2025-09-20T02:30:00.000Z" }
+  ]
+ },
+ "merged": [
+  { "start": "2025-09-16T23:30:00.000Z", "end": "2025-09-17T02:30:00.000Z" },
+  { "start": "2025-09-19T23:30:00.000Z", "end": "2025-09-20T02:30:00.000Z" }
+ ]
 }
 ```
 
@@ -559,9 +566,12 @@ curl -H "X-API-Key: your-secret-key" \
 - **`yarn format`**: Format code with Prettier
 - **`yarn test`**: Run Vitest tests
 - **`yarn test:watch`**: Run tests in watch mode
+- **`yarn drizzle:generate`**: Generate SQL migrations from schema
+- **`yarn drizzle:migrate`**: Run pending SQL migrations against the database
 - **`yarn auth:google`**: OAuth device flow for Google Calendar
 - **`yarn add:gcal`**: Register a Google Calendar ID
 - **`yarn add:ics`**: Register an ICS feed URL
+- **`yarn backfill:transparency`**: Backfill transparency (free/busy status) for existing events
 
 ### Project Structure
 
@@ -604,14 +614,24 @@ omnical/
 │   └── cli/
 │       ├── authGoogleDevice.ts   # OAuth CLI
 │       ├── addGoogleCal.ts       # Register Google calendar
-│       └── addIcsCal.ts          # Register ICS feed
+│       ├── addIcsCal.ts          # Register ICS feed
+│       └── backfillTransparency.ts # Backfill transparency (free/busy) for existing events
 ├── drizzle/
 │   └── migrations/
+│       ├── 0000_mushy_radioactive_man.sql # Drizzle-generated baseline migration
 │       ├── 000_init.sql                  # Initial schema
 │       ├── 001_add_calendar_metadata.sql  # Calendar metadata columns
-│       └── 002_add_calendar_filters.sql   # Per-calendar filter settings
+│       ├── 002_add_calendar_filters.sql   # Per-calendar filter settings
+│       ├── 003_add_transparency.sql       # Add transparency column for free/busy
+│       └── meta/                          # Drizzle migration metadata
+├── deploy/
+│   └── systemd/
+│       └── omnical.service        # Example systemd unit
 ├── data/
-│   └── cal.db                # SQLite database (created on first run)
+│   └── cal.db                     # SQLite database (created on first run)
+├── Caddyfile.sample
+├── Dockerfile
+├── docker-compose.yml
 ├── package.json
 ├── tsconfig.json
 ├── .env                      # Your environment config (not in git)
@@ -621,7 +641,7 @@ omnical/
 ### Database Schema
 
 - **`calendars`**: Calendar sources (Google or ICS) and per-calendar settings
-- **`raw_events`**: Normalized event storage (masters, overrides, singles)
+- **`raw_events`**: Normalized event storage (masters, overrides, singles) including transparency (free/busy) status
 - **`oauth_tokens`**: Encrypted OAuth refresh/access tokens
 
 ### Notes
@@ -632,24 +652,21 @@ omnical/
 
 ## Deployment
 
-### Docker (example)
+### Docker
 
-```dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY package.json yarn.lock ./
-RUN corepack enable && yarn install --frozen-lockfile
-COPY . .
-RUN yarn build
-ENV NODE_ENV=production
-CMD ["node", "dist/index.js"]
-```
+This repo includes a multi-stage `Dockerfile` (currently targeting `linux/arm64`, e.g. RPi5) and a `docker-compose.yml` example.
 
 Build and run:
 
 ```bash
 docker build -t omnical .
 docker run -p 8787:8787 --env-file .env -v ./data:/app/data omnical
+```
+
+Or with compose:
+
+```bash
+docker compose up --build
 ```
 
 ### Systemd Service (Linux)
@@ -680,6 +697,10 @@ sudo systemctl enable omnical
 sudo systemctl start omnical
 sudo systemctl status omnical
 ```
+
+### Reverse Proxy (Caddy)
+
+See `Caddyfile.sample` for an example TLS-terminating reverse proxy that forwards `X-API-Key` to OmniCal.
 
 ## License
 

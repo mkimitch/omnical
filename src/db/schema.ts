@@ -34,6 +34,7 @@ export const rawEvents = sqliteTable('raw_events', {
 	description: text('description'),
 	recurrenceJson: text('recurrence_json'),
 	sourceJson: text('source_json').notNull(),
+	transparency: text('transparency').default('opaque'),
 });
 
 export const oauthTokens = sqliteTable('oauth_tokens', {
