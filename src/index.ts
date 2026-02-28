@@ -24,7 +24,7 @@ const main = async () => {
 		ensureIcsCalendarsFromEnv();
 	}
 
-	const app = Fastify({ logger });
+	const app = Fastify({ loggerInstance: logger });
 	await app.register(authPlugin);
 	await app.register(healthPlugin);
 	await app.register(calendarsPlugin);
