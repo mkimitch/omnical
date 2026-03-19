@@ -13,7 +13,13 @@ const envSchema = z.object({
 	DB_PATH: z.string().default('./data/cal.db'),
 	GOOGLE_CLIENT_ID: z.string().optional(),
 	GOOGLE_CLIENT_SECRET: z.string().optional(),
-	GOOGLE_SCOPES: z.string().default('https://www.googleapis.com/auth/calendar.readonly'),
+	GOOGLE_LOOPBACK_CLIENT_ID: z.string().optional(),
+	GOOGLE_LOOPBACK_CLIENT_SECRET: z.string().optional(),
+	GOOGLE_SCOPES: z
+		.string()
+		.default(
+			'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/tasks',
+		),
 	ICS_URLS: z.string().optional(),
 	LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 	NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

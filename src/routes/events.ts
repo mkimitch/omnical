@@ -13,14 +13,21 @@ const eventsPlugin: FastifyPluginCallback = (fastify, _opts, done) => {
 			.string()
 			.optional()
 			.transform((v) => (v ? v.toLowerCase() === 'true' : false)),
+		includeTasks: z
+			.string()
+			.optional()
+			.transform((v) => v === 'true'),
 		clientZone: z.string().optional(),
 	});
 
 	fastify.get('/v1/events', async (req, reply) => {
 		const parsed = qSchema.safeParse(req.query);
 		if (!parsed.success) return reply.code(400).send({ ok: false, error: parsed.error.message });
-		const { start, end, includeCancelled, clientZone } = parsed.data;
-		const events = await expandWindow(start, end, includeCancelled, { crossCalendarDedupe: true });
+		const { start, end, includeCancelled, includeTasks, clientZone } = parsed.data;
+		const events = await expandWindow(start, end, includeCancelled, {
+			crossCalendarDedupe: true,
+			includeTasks,
+		});
 		const mapped = events.map((e) => {
 			const startUtc = DateTime.fromISO(e.start).toUTC();
 			const endUtc = DateTime.fromISO(e.end).toUTC();

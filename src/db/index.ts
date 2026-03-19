@@ -12,21 +12,56 @@ const splitSqlStatements = (sql: string): string[] => {
 	let cur = '';
 	let inSingle = false;
 	let inDouble = false;
+	let inLineComment = false;
+	let inBlockComment = false;
+
 	for (let i = 0; i < sql.length; i++) {
 		const ch = sql[i]!;
+		const next = i + 1 < sql.length ? sql[i + 1]! : '';
 		const prev = i > 0 ? sql[i - 1] : '';
+
+		if (inLineComment) {
+			cur += ch;
+			if (ch === '\n') inLineComment = false;
+			continue;
+		}
+
+		if (inBlockComment) {
+			cur += ch;
+			if (prev === '*' && ch === '/') inBlockComment = false;
+			continue;
+		}
+
+		if (!inSingle && !inDouble) {
+			if (ch === '-' && next === '-') {
+				inLineComment = true;
+				cur += ch;
+				continue;
+			}
+
+			if (ch === '/' && next === '*') {
+				inBlockComment = true;
+				cur += ch;
+				continue;
+			}
+		}
+
 		if (!inDouble && ch === "'" && prev !== '\\') inSingle = !inSingle;
 		if (!inSingle && ch === '"' && prev !== '\\') inDouble = !inDouble;
-		if (!inSingle && !inDouble && ch === ';') {
+
+		if (!inSingle && !inDouble && !inLineComment && !inBlockComment && ch === ';') {
 			const stmt = cur.trim();
 			if (stmt.length > 0) out.push(stmt);
 			cur = '';
 			continue;
 		}
+
 		cur += ch;
 	}
+
 	const last = cur.trim();
 	if (last.length > 0) out.push(last);
+
 	return out;
 };
 

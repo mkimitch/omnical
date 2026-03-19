@@ -10,6 +10,7 @@ import healthPlugin from './routes/health.js';
 import icsPlugin from './routes/ics.js';
 import metricsPlugin from './routes/metrics.js';
 import syncPlugin from './routes/sync.js';
+import tasksPlugin from './routes/tasks.js';
 import { startScheduler } from './scheduler.js';
 import authPlugin from './server/auth.js';
 ('use strict');
@@ -31,6 +32,7 @@ const main = async () => {
 	await app.register(eventsPlugin);
 	await app.register(icsPlugin);
 	await app.register(syncPlugin);
+	await app.register(tasksPlugin);
 	await app.register(metricsPlugin);
 
 	try {
