@@ -35,6 +35,7 @@
 		"drizzle:generate": "drizzle-kit generate",
 		"drizzle:migrate": "drizzle-kit migrate",
 		"auth:google": "tsx src/cli/authGoogleDevice.ts",
+		"auth:google:loopback": "tsx src/cli/authGoogleLoopback.ts",
 		"add:gcal": "tsx src/cli/addGoogleCal.ts",
 		"add:ics": "tsx src/cli/addIcsCal.ts",
 		"backfill:transparency": "tsx src/cli/backfillTransparency.ts"

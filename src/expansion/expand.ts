@@ -2,7 +2,7 @@
 import { DateTime } from 'luxon';
 import rrulePkg from 'rrule';
 import { getDb } from '../db/conn.js';
-import { listEnabledCalendars } from '../db/repo.js';
+import { listEnabledCalendars, listRawTasksDueBetween, type RawTaskRow } from '../db/repo.js';
 import { LruCache } from '../util/lru.js';
 const { RRule, RRuleSet, rrulestr } = rrulePkg;
 
@@ -10,7 +10,7 @@ export type TimeTransparency = {
 	blocksTime: boolean;
 	value: 'opaque' | 'transparent';
 	source: {
-		provider: 'google' | 'ics';
+		provider: 'google' | 'ics' | 'google-tasks';
 		rawValue: string | null;
 	};
 };
@@ -22,7 +22,7 @@ export type EventOut = {
 	end: string; // ISO
 	location: string | null;
 	recurrence: { isRecurring: boolean; masterUid?: string; recurrenceId?: string };
-	source: { type: 'google' | 'ics'; id: string };
+	source: { type: 'google' | 'ics' | 'google-tasks'; id: string };
 	start: string; // ISO
 	status: string | null;
 	summary: string | null;
@@ -193,11 +193,36 @@ const buildTimeTransparency = (
 	};
 };
 
+const nextDayIso = (dateIso: string): string => {
+	const dt = DateTime.fromISO(dateIso, { zone: 'utc' }).plus({ days: 1 });
+	return dt.toISO()!;
+};
+
+const projectTasksToEvents = (tasks: RawTaskRow[]): EventOut[] =>
+	tasks.map((row) => ({
+		allDay: true,
+		calendarId: row.task_list_id,
+		description: row.notes,
+		end: nextDayIso(row.due_iso!),
+		location: null,
+		recurrence: { isRecurring: false },
+		source: { type: 'google-tasks' as const, id: row.task_id },
+		start: DateTime.fromISO(row.due_iso!, { zone: 'utc' }).startOf('day').toISO()!,
+		status: row.status,
+		summary: row.title,
+		timeTransparency: {
+			blocksTime: false,
+			value: 'transparent' as const,
+			source: { provider: 'google-tasks' as const, rawValue: null },
+		},
+		uid: `gtask_${row.task_list_id}_${row.task_id}`,
+	}));
+
 export const expandWindow = async (
 	startIso: string,
 	endIso: string,
 	includeCancelled: boolean,
-	opts?: { crossCalendarDedupe?: boolean },
+	opts?: { crossCalendarDedupe?: boolean; includeTasks?: boolean },
 ): Promise<EventOut[]> => {
 	const start = DateTime.fromISO(startIso, { zone: 'utc' });
 	const end = DateTime.fromISO(endIso, { zone: 'utc' });
@@ -214,6 +239,7 @@ export const expandWindow = async (
 		e: end.toISO(),
 		c: includeCancelled,
 		x: opts?.crossCalendarDedupe === true,
+		t: opts?.includeTasks === true,
 		cals: enabled.map((c) => ({ id: c.id, u: c.updated_at })),
 	});
 	const cached = cache.get(cacheKey);
@@ -425,6 +451,18 @@ export const expandWindow = async (
 		if (sa !== 0) return sa;
 		return a.uid.localeCompare(b.uid);
 	});
+	// Append task events (not subject to calendar dedup logic)
+	if (opts?.includeTasks === true) {
+		const tasks = listRawTasksDueBetween(start.toISO()!, end.toISO()!);
+		const taskEvents = projectTasksToEvents(tasks);
+		deduped.push(...taskEvents);
+		deduped.sort((a, b) => {
+			if (a.start !== b.start) return a.start < b.start ? -1 : 1;
+			if (a.end !== b.end) return a.end < b.end ? -1 : 1;
+			return (a.summary ?? '').localeCompare(b.summary ?? '');
+		});
+	}
+
 	cache.set(cacheKey, deduped);
 	return deduped;
 };

@@ -107,13 +107,52 @@ export const pollForToken = async (
 	throw new Error('Unreachable');
 };
 
+export const exchangeCodeForTokens = async (
+	code: string,
+	redirectUri: string,
+	clientId: string,
+	clientSecret: string,
+): Promise<GoogleTokenSet> => {
+	const body = new URLSearchParams({
+		code,
+		client_id: clientId,
+		client_secret: clientSecret,
+		redirect_uri: redirectUri,
+		grant_type: 'authorization_code',
+	});
+	const res = await fetch(TOKEN_URL, {
+		method: 'POST',
+		headers: { 'content-type': 'application/x-www-form-urlencoded' },
+		body,
+	});
+	const json = (await res.json()) as any;
+	if (!res.ok) {
+		throw new Error(
+			`Token exchange failed: ${res.status} ${res.statusText} - ${JSON.stringify(json)}`,
+		);
+	}
+	const expiryDate = Date.now() + (json.expires_in ?? 3600) * 1000;
+	const tokens: GoogleTokenSet = {
+		access_token: json.access_token,
+		expires_in: json.expires_in,
+		expiry_date: expiryDate,
+		refresh_token: json.refresh_token,
+		scope: json.scope,
+		token_type: json.token_type,
+	};
+	save(tokens);
+	return tokens;
+};
+
 export const refreshAccessToken = async (): Promise<GoogleTokenSet> => {
 	const env = loadEnv();
 	const existing = load();
 	if (!existing?.refresh_token) throw new Error('No stored refresh_token');
+	const clientId = env.GOOGLE_LOOPBACK_CLIENT_ID ?? env.GOOGLE_CLIENT_ID;
+	const clientSecret = env.GOOGLE_LOOPBACK_CLIENT_SECRET ?? env.GOOGLE_CLIENT_SECRET;
 	const body = new URLSearchParams({
-		client_id: env.GOOGLE_CLIENT_ID!,
-		client_secret: env.GOOGLE_CLIENT_SECRET!,
+		client_id: clientId!,
+		client_secret: clientSecret!,
 		refresh_token: existing.refresh_token,
 		grant_type: 'refresh_token',
 	});
@@ -139,6 +178,12 @@ export const refreshAccessToken = async (): Promise<GoogleTokenSet> => {
 	};
 	save(tokens);
 	return tokens;
+};
+
+export const hasTasksScope = (): boolean => {
+	const tokens = load();
+	if (!tokens?.scope) return false;
+	return tokens.scope.includes('tasks');
 };
 
 export const getValidAccessToken = async (): Promise<string> => {
