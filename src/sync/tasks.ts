@@ -63,8 +63,8 @@ export const syncGoogleTasks = async (): Promise<TaskSyncSummary> => {
 	let accessToken: string | null = null;
 	try {
 		accessToken = await getValidAccessToken();
-	} catch {
-		logger.warn('No valid Google OAuth tokens found; skipping Google Tasks sync');
+	} catch (e) {
+		logger.warn({ err: e }, 'Failed to obtain Google access token; skipping Google Tasks sync');
 		return { updated: 0, taskLists: [] };
 	}
 

@@ -149,7 +149,7 @@ export const syncGoogleCalendars = async (): Promise<SyncSummary> => {
 	try {
 		accessToken = await getValidAccessToken();
 	} catch (e) {
-		logger.warn('No valid Google OAuth tokens found; skipping Google sync');
+		logger.warn({ err: e }, 'Failed to obtain Google access token; skipping Google sync');
 		return { updated: 0, calendars: [] };
 	}
 	for (const cal of enabled) {
@@ -183,6 +183,10 @@ export const syncGoogleCalendars = async (): Promise<SyncSummary> => {
 				}
 				const json = (await res.json()) as any;
 				const items: GoogleEvent[] = json.items ?? [];
+				logger.debug(
+					{ cal: cal.id, itemCount: items.length, hasPageToken: !!json.nextPageToken, hasSyncToken: !!json.nextSyncToken, incremental: isIncremental },
+					'Google events.list page fetched',
+				);
 				for (const it of items) {
 					const mapped = mapGoogleEvent(cal.id, it);
 					if (!mapped) continue;
