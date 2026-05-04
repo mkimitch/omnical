@@ -231,7 +231,7 @@ curl -X POST -H "X-API-Key: your-secret-key" \
 
 **Response**: `201 Created` with the created calendar object.
 
-**Note**: You must run `yarn auth:google` first to authenticate with Google Calendar API.
+**Note**: You must run `yarn auth:google:loopback` first to authenticate with Google Calendar API.
 
 #### `PUT /v1/calendars/:id`
 
@@ -520,7 +520,7 @@ GOOGLE_CLIENT_SECRET=<your-client-secret>
 ### 3. Run OAuth device flow
 
 ```bash
-yarn auth:google
+yarn auth:google:loopback
 ```
 
 Follow the printed instructions:
@@ -568,7 +568,7 @@ curl -H "X-API-Key: your-secret-key" \
 - **`yarn test:watch`**: Run tests in watch mode
 - **`yarn drizzle:generate`**: Generate SQL migrations from schema
 - **`yarn drizzle:migrate`**: Run pending SQL migrations against the database
-- **`yarn auth:google`**: OAuth device flow for Google Calendar
+- **`yarn auth:google:loopback`**: OAuth device flow for Google Calendar
 - **`yarn add:gcal`**: Register a Google Calendar ID
 - **`yarn add:ics`**: Register an ICS feed URL
 - **`yarn backfill:transparency`**: Backfill transparency (free/busy status) for existing events
