@@ -3,6 +3,7 @@ import { DateTime } from 'luxon';
 import { loadEnv } from '../config/env.js';
 import { getTokenPayload, saveTokenPayload } from '../db/tokens.js';
 import { logger } from '../logging/logger.js';
+import { fetchWithTimeout } from '../util/http.js';
 
 const DEVICE_CODE_URL = 'https://oauth2.googleapis.com/device/code';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -34,7 +35,7 @@ export const startDeviceAuth = async (): Promise<DeviceCodeResponse> => {
 		client_id: env.GOOGLE_CLIENT_ID,
 		scope: env.GOOGLE_SCOPES,
 	});
-	const res = await fetch(DEVICE_CODE_URL, {
+	const res = await fetchWithTimeout(DEVICE_CODE_URL, {
 		method: 'POST',
 		headers: { 'content-type': 'application/x-www-form-urlencoded' },
 		body,
@@ -66,7 +67,7 @@ export const pollForToken = async (
 	// eslint-disable-next-line no-constant-condition
 	while (true) {
 		await new Promise((r) => setTimeout(r, waitMs));
-		const res = await fetch(TOKEN_URL, {
+		const res = await fetchWithTimeout(TOKEN_URL, {
 			method: 'POST',
 			headers: { 'content-type': 'application/x-www-form-urlencoded' },
 			body: new URLSearchParams(paramsBase as Record<string, string>),
@@ -120,7 +121,7 @@ export const exchangeCodeForTokens = async (
 		redirect_uri: redirectUri,
 		grant_type: 'authorization_code',
 	});
-	const res = await fetch(TOKEN_URL, {
+	const res = await fetchWithTimeout(TOKEN_URL, {
 		method: 'POST',
 		headers: { 'content-type': 'application/x-www-form-urlencoded' },
 		body,
@@ -156,7 +157,7 @@ export const refreshAccessToken = async (): Promise<GoogleTokenSet> => {
 		refresh_token: existing.refresh_token,
 		grant_type: 'refresh_token',
 	});
-	const res = await fetch(TOKEN_URL, {
+	const res = await fetchWithTimeout(TOKEN_URL, {
 		method: 'POST',
 		headers: { 'content-type': 'application/x-www-form-urlencoded' },
 		body,

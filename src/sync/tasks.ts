@@ -1,6 +1,7 @@
 'use strict';
 import {
 	deleteRawTask,
+	disableTaskList,
 	getExistingTaskUpdatedTs,
 	listEnabledTaskLists,
 	updateTaskListSyncState,
@@ -8,8 +9,9 @@ import {
 	upsertTaskList,
 	type RawTaskRow,
 } from '../db/repo.js';
-import { getValidAccessToken, hasTasksScope } from '../google/oauth.js';
+import { getValidAccessToken, hasTasksScope, refreshAccessToken } from '../google/oauth.js';
 import { logger } from '../logging/logger.js';
+import { fetchWithTimeout } from '../util/http.js';
 
 const TASKS_BASE = 'https://tasks.googleapis.com/tasks/v1';
 const SYNC_OVERLAP_BUFFER_MS = 30_000; // 30-second safety buffer
@@ -75,7 +77,16 @@ export const syncGoogleTasks = async (): Promise<TaskSyncSummary> => {
 		return { updated: 0, taskLists: [] };
 	}
 
-	const authHeader = { Authorization: `Bearer ${accessToken}` };
+	let authHeader = { Authorization: `Bearer ${accessToken}` };
+	const fetchTasksApi = async (url: string): Promise<Response> => {
+		let res = await fetchWithTimeout(url, { headers: authHeader });
+		if (res.status !== 401) return res;
+		const refreshed = await refreshAccessToken();
+		accessToken = refreshed.access_token;
+		authHeader = { Authorization: `Bearer ${accessToken}` };
+		logger.warn('Google Tasks access token rejected; refreshed and retrying');
+		return await fetchWithTimeout(url, { headers: authHeader });
+	};
 
 	// Step 1: Discover all task lists and upsert them
 	try {
@@ -83,9 +94,7 @@ export const syncGoogleTasks = async (): Promise<TaskSyncSummary> => {
 		do {
 			const params = new URLSearchParams({ maxResults: '100' });
 			if (listPageToken) params.set('pageToken', listPageToken);
-			const res = await fetch(`${TASKS_BASE}/users/@me/lists?${params.toString()}`, {
-				headers: authHeader,
-			});
+			const res = await fetchTasksApi(`${TASKS_BASE}/users/@me/lists?${params.toString()}`);
 			if (!res.ok) {
 				const text = await res.text();
 				throw new Error(`Task lists fetch failed: ${res.status} ${res.statusText} - ${text}`);
@@ -112,6 +121,7 @@ export const syncGoogleTasks = async (): Promise<TaskSyncSummary> => {
 			let maxRemoteUpdatedTs = 0;
 			let updatedCount = 0;
 			let pageToken: string | undefined;
+			let remoteMissing = false;
 
 			do {
 				const params = new URLSearchParams({
@@ -126,10 +136,18 @@ export const syncGoogleTasks = async (): Promise<TaskSyncSummary> => {
 					params.set('updatedMin', new Date(cursorMs).toISOString());
 				}
 
-				const res = await fetch(
+				const res = await fetchTasksApi(
 					`${TASKS_BASE}/lists/${encodeURIComponent(tl.google_task_list_id)}/tasks?${params.toString()}`,
-					{ headers: authHeader },
 				);
+				if (res.status === 404) {
+					disableTaskList(tl.id);
+					remoteMissing = true;
+					logger.warn(
+						{ taskList: tl.id },
+						'Google Task list missing remotely; disabled local task list',
+					);
+					break;
+				}
 				if (!res.ok) {
 					const text = await res.text();
 					throw new Error(
@@ -161,6 +179,8 @@ export const syncGoogleTasks = async (): Promise<TaskSyncSummary> => {
 
 				pageToken = json.nextPageToken;
 			} while (pageToken);
+
+			if (remoteMissing) continue;
 
 			totalUpdated += updatedCount;
 			syncedListIds.push(tl.id);
