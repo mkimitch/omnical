@@ -7,8 +7,9 @@ import {
 	updateCalendarSyncToken,
 	upsertRawEvent,
 } from '../db/repo.js';
-import { getValidAccessToken } from '../google/oauth.js';
+import { getValidAccessToken, refreshAccessToken } from '../google/oauth.js';
 import { logger } from '../logging/logger.js';
+import { fetchWithTimeout } from '../util/http.js';
 
 type GoogleEventTime = { date?: string; dateTime?: string; timeZone?: string };
 type GoogleEvent = {
@@ -170,7 +171,17 @@ export const syncGoogleCalendars = async (): Promise<SyncSummary> => {
 				if (pageToken) params.set('pageToken', pageToken);
 				if (incrementalToken) params.set('syncToken', incrementalToken);
 				const url = `${gBase}/${encodedCalId}/events?${params.toString()}`;
-				const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken!}` } });
+				let res = await fetchWithTimeout(url, {
+					headers: { Authorization: `Bearer ${accessToken!}` },
+				});
+				if (res.status === 401) {
+					const refreshed = await refreshAccessToken();
+					accessToken = refreshed.access_token;
+					logger.warn({ cal: cal.id }, 'Google access token rejected; refreshed and retrying');
+					res = await fetchWithTimeout(url, {
+						headers: { Authorization: `Bearer ${accessToken}` },
+					});
+				}
 				if (res.status === 410) {
 					// Invalid sync token: clear and force full sync
 					updateCalendarSyncToken(cal.id, null);

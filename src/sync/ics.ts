@@ -4,6 +4,7 @@ import ical from 'node-ical';
 import type { CalendarRow, RawEventRow } from '../db/repo.js';
 import { listEnabledCalendars, updateCalendarIcsState, upsertRawEvent } from '../db/repo.js';
 import { logger } from '../logging/logger.js';
+import { fetchWithTimeout } from '../util/http.js';
 
 const headerOrNull = (res: Response, name: string): string | null => {
 	const v = res.headers.get(name);
@@ -105,7 +106,7 @@ export const syncIcsCalendars = async (): Promise<{ updated: number; calendars: 
 			};
 			if (cal.ics_etag) headers['If-None-Match'] = cal.ics_etag;
 			if (cal.ics_last_mod) headers['If-Modified-Since'] = cal.ics_last_mod;
-			const res = await fetch(cal.ics_url, { headers });
+			const res = await fetchWithTimeout(cal.ics_url, { headers });
 			logger.info(
 				{ cal: cal.id, status: res.status, ct: res.headers.get('content-type') },
 				'ICS fetch response',

@@ -4,14 +4,22 @@ import { logger } from './logging/logger.js';
 import { syncAll } from './sync/orchestrator.js';
 
 let running = false;
+let runningSince = 0;
 
 export const startScheduler = (): void => {
 	const env = loadEnv();
 	const interval = env.SYNC_INTERVAL_MS;
 	const tick = async () => {
-		if (running) return;
+		if (running) {
+			logger.warn(
+				{ runningMs: runningSince ? Date.now() - runningSince : null },
+				'Periodic sync skipped; previous sync still running',
+			);
+			return;
+		}
 		running = true;
 		const start = Date.now();
+		runningSince = start;
 		try {
 			const res = await syncAll();
 			const dur = Date.now() - start;
@@ -20,6 +28,7 @@ export const startScheduler = (): void => {
 			logger.error({ err }, 'Periodic sync failed');
 		} finally {
 			running = false;
+			runningSince = 0;
 		}
 	};
 	setInterval(tick, interval).unref();
