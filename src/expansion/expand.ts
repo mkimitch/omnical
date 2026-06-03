@@ -84,7 +84,7 @@ const passesCalendarFilters = (e: EventOut, cfg: CalendarFilterConfig | null): b
 		const deny = cfg.allDay?.excludeKeywords ?? [];
 		if (deny.length > 0) {
 			const allow = cfg.allDay?.allowKeywords ?? [];
-			const text = `${e.summary ?? ''}\n${e.description ?? ''}\n${e.location ?? ''}`.toLowerCase();
+			const text = (e.summary ?? '').toLowerCase();
 			if (allow.length > 0 && includesAny(text, allow)) return true;
 			if (includesAny(text, deny)) return false;
 		}
