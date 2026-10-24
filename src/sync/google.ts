@@ -47,30 +47,33 @@ const toUtcIso = (
 	return { iso: fallbackIso ?? DateTime.utc().toISO(), allDay: false };
 };
 
-const parseRecurrence = (
+export const parseGoogleRecurrence = (
 	recurrence: string[] | undefined,
 ): { rrule: string | null; exdates: string[]; rdates: string[] } => {
 	if (!recurrence || recurrence.length === 0) return { rrule: null, exdates: [], rdates: [] };
 	let rrule: string | null = null;
 	const exdates: string[] = [];
+	const rdates: string[] = [];
 	for (const line of recurrence) {
 		if (line.startsWith('RRULE')) rrule = line.trim();
-		if (line.startsWith('EXDATE')) {
+		if (line.startsWith('EXDATE') || line.startsWith('RDATE')) {
 			// Handle formats like: EXDATE;TZID=America/Los_Angeles:20240112T090000,20240113T090000
 			const parts = line.split(':');
 			const prefix = parts[0] ?? '';
 			const vals = parts.slice(1).join(':');
 			const tzMatch = /TZID=([^;:]+)/.exec(prefix);
 			const zone = tzMatch?.[1] ?? 'utc';
+			const dates = line.startsWith('EXDATE') ? exdates : rdates;
 			for (const v of vals.split(',')) {
 				const trimmed = v.trim();
 				if (!trimmed) continue;
-				const dt = DateTime.fromFormat(trimmed, "yyyyMMdd'T'HHmmss", { zone });
-				if (dt.isValid) exdates.push(dt.toUTC().toISO()!);
+				// Basic ISO supports DATE, local DATE-TIME with TZID, and UTC Z values.
+				const dt = DateTime.fromISO(trimmed, { zone });
+				if (dt.isValid) dates.push(dt.toUTC().toISO()!);
 			}
 		}
 	}
-	return { rrule, exdates, rdates: [] };
+	return { rrule, exdates, rdates };
 };
 
 const normalizeGoogleTransparency = (value: string | undefined): 'opaque' | 'transparent' => {
@@ -92,7 +95,7 @@ const mapGoogleEvent = (
 	const start = toUtcIso(ge.start, orig?.iso ?? undefined);
 	const end = toUtcIso(ge.end, orig?.iso ?? undefined);
 	const tzid = ge.start?.timeZone ?? ge.end?.timeZone ?? null;
-	const rec = parseRecurrence(ge.recurrence);
+	const rec = parseGoogleRecurrence(ge.recurrence);
 	const recurrenceId = isOverride ? orig!.iso : null;
 	// Special handling for cancelled single events (no times): delete existing rows
 	if ((ge.status ?? '').toLowerCase() === 'cancelled' && !isOverride) {

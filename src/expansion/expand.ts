@@ -1,10 +1,9 @@
 'use strict';
 import { DateTime } from 'luxon';
-import rrulePkg from 'rrule';
 import { getDb } from '../db/conn.js';
 import { listEnabledCalendars, listRawTasksDueBetween, type RawTaskRow } from '../db/repo.js';
 import { LruCache } from '../util/lru.js';
-const { RRule, RRuleSet, rrulestr } = rrulePkg;
+import { expandRecurrence } from './recurrence.js';
 
 export type TimeTransparency = {
 	blocksTime: boolean;
@@ -32,6 +31,9 @@ export type EventOut = {
 
 type CalendarFilterConfig = {
 	enabled?: boolean;
+	summary?: {
+		excludePrefixes?: string[];
+	};
 	allDay?: {
 		excludeKeywords?: string[];
 		allowKeywords?: string[];
@@ -78,8 +80,24 @@ const eventRichnessScore = (e: EventOut): number => {
 	return score;
 };
 
+export const summaryHasExcludedPrefix = (
+	summary: string | null | undefined,
+	prefixes: unknown,
+): boolean => {
+	if (!summary || !Array.isArray(prefixes)) return false;
+	const text = summary.trimStart().toLowerCase();
+	return prefixes.some((prefix: unknown) => {
+		if (typeof prefix !== 'string') return false;
+		const normalized = prefix.trim().toLowerCase();
+		if (!normalized || !text.startsWith(normalized)) return false;
+		// End of title or a separator, never the middle of a word (including Unicode).
+		return !/^[\p{L}\p{M}\p{N}\p{Pc}]/u.test(text.slice(normalized.length));
+	});
+};
+
 const passesCalendarFilters = (e: EventOut, cfg: CalendarFilterConfig | null): boolean => {
 	if (!cfg || cfg.enabled !== true) return true;
+	if (summaryHasExcludedPrefix(e.summary, cfg.summary?.excludePrefixes)) return false;
 	if (e.allDay) {
 		const deny = cfg.allDay?.excludeKeywords ?? [];
 		if (deny.length > 0) {
@@ -123,21 +141,6 @@ const parseRecurrence = (
 	} catch {
 		return { rrule: null, exdates: [], rdates: [] };
 	}
-};
-
-const buildSet = (
-	dtstart: Date,
-	rruleStr: string,
-	exdates: string[],
-	rdates: string[],
-): InstanceType<typeof RRuleSet> => {
-	const set = new RRuleSet();
-	set.dtstart(dtstart);
-	const rule = rrulestr(rruleStr, { dtstart }) as InstanceType<typeof RRule>;
-	set.rrule(rule);
-	for (const ex of exdates) set.exdate(DateTime.fromISO(ex, { zone: 'utc' }).toJSDate());
-	for (const rd of rdates) set.rdate(DateTime.fromISO(rd, { zone: 'utc' }).toJSDate());
-	return set;
 };
 
 type RawRow = {
@@ -292,12 +295,16 @@ export const expandWindow = async (
 	// Expand masters
 	for (const m of masters) {
 		const { rrule, exdates, rdates } = parseRecurrence(m.recurrence_json);
-		if (!rrule) continue;
-		const dtstart = DateTime.fromISO(m.start_iso, { zone: 'utc' }).toJSDate();
-		const set = buildSet(dtstart, rrule, exdates, rdates);
+		if (!rrule && rdates.length === 0) continue;
 		const durationMs =
 			DateTime.fromISO(m.end_iso).toMillis() - DateTime.fromISO(m.start_iso).toMillis();
-		const occ = set.between(start.toJSDate(), end.toJSDate(), true);
+		const occ = expandRecurrence({
+			startIso: m.start_iso,
+			rrule,
+			exdates,
+			rdates,
+			timeZone: m.all_day === 0 ? m.tzid : null,
+		}, start, end);
 		for (const o of occ) {
 			const occStart = DateTime.fromJSDate(o, { zone: 'utc' });
 			const recurrenceId = occStart.toISO()!;
@@ -323,16 +330,7 @@ export const expandWindow = async (
 				continue;
 			}
 			// Base instance
-			let instStart = occStart;
-			if (m.tzid && m.all_day === 0) {
-				const zone = m.tzid;
-				const baseLocal = DateTime.fromISO(m.start_iso, { zone });
-				const occLocal = occStart.setZone(zone);
-				const deltaMin = baseLocal.offset - occLocal.offset;
-				if (deltaMin !== 0) {
-					instStart = instStart.plus({ minutes: deltaMin });
-				}
-			}
+			const instStart = occStart;
 			const instEnd = instStart.plus({ milliseconds: durationMs });
 			results.push({
 				allDay: m.all_day === 1,
