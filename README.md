@@ -292,7 +292,46 @@ curl -X PUT -H "X-API-Key: your-secret-key" \
 
 - **All-day events only**: the example above only applies to `allDay: true` events.
 - **Exclude**: if an all-day event contains any `excludeKeywords`, it is filtered out.
-- **Allow/exception**: if it contains any `allowKeywords`, it is kept even if it matches an exclude keyword.
+- **Allow/exception**: if it contains any `allowKeywords`, it passes the all-day keyword rule even if it matches an exclude keyword. This exception does not bypass other rules.
+- Both keyword lists use case-insensitive substring matching; blank keywords are ignored.
+
+**Exclude title prefixes** (optional, for both timed and all-day events):
+
+```json
+{
+ "enabled": true,
+ "summary": {
+  "excludePrefixes": ["Canceled", "Cancelled"]
+ }
+}
+```
+
+- Requires `filterJson.enabled: true` and an explicitly configured `summary.excludePrefixes` list. There are no default cancellation prefixes.
+- Matches literal prefixes at the beginning of `summary`, ignoring leading whitespace and case. Configured prefixes are trimmed; blank or non-string entries are ignored.
+- The prefix must be followed by the end of the title or a word separator, such as whitespace or punctuation. A following Unicode letter, combining mark, number, or connector punctuation (including `_`) prevents a match.
+- Excludes `Canceled: Doctor Appointment`, `CANCELLED - School Event`, `Cancelled`, and `  canceled Team Meeting`.
+- Retains `Meeting About Canceled Events`, `Cancellation Policy`, `Uncanceled Appointment`, and `Regular Appointment`. Null, missing, or empty titles pass this rule.
+- Applies after recurrence expansion and override resolution, using each occurrence's final title, and before existing deduplication. All-day `allowKeywords` only override all-day `excludeKeywords`; they do not override title-prefix exclusions.
+- Excluded events do not appear in `/v1/events`, `/v1/freebusy`, or `/v1/ics`, including their returned event/occurrence counts and busy intervals. Ingested events and source calendars are unchanged.
+- `includeCancelled=true` on `/v1/events` controls event-status filtering independently; it does not bypass title-prefix filtering. `/v1/freebusy` and `/v1/ics` continue to request status filtering and do not support `includeCancelled`.
+
+**Enable on an existing calendar without replacing its other rules**:
+
+`PUT` replaces the entire `filterJson` value, so first read it and merge the new prefixes. This example uses `jq` to preserve existing `allDay`, `allowKeywords`, `dedupe`, and other settings, including any existing prefixes. Only `filterJson` is sent back; calendar metadata stays intact. Setting `enabled` to `true` also activates any existing all-day filters.
+
+```bash
+calendar_url='http://127.0.0.1:8787/v1/calendars/ics_2f89f7f05ca3'
+api_key='your-secret-key'
+
+curl -fsS -H "X-API-Key: $api_key" "$calendar_url" \
+  | jq '(.filterJson // "{}" | fromjson)
+      | .enabled = true
+      | .summary.excludePrefixes =
+          ((.summary.excludePrefixes // []) + ["Canceled", "Cancelled"] | unique)
+      | {filterJson: .}' \
+  | curl -fsS -X PUT -H "X-API-Key: $api_key" \
+      -H 'Content-Type: application/json' --data-binary @- "$calendar_url"
+```
 
 **Dedupe config format** (example):
 
